@@ -86,7 +86,7 @@ CACHE_TIME_BUCKET_MIN = 20  # Cache granularity: 20 minutes
 DB_CONFIG = {
     'host': 'localhost',
     'user': 'morten',
-    'password': 'your_password',  # Change this
+    'password': 'mp120mp120',  # Change this
     'database': 'sqm_cache',
     'raise_on_warnings': False
 }
@@ -513,20 +513,23 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
 #             logging.debug(f"set roll_duration_min: {roll_duration_min}")
             
             if last_altitude_time is None or (t - last_altitude_time) > (roll_duration_min * u.min).to(u.day):
-                # Try to get cached values first
-                cache_result = get_cache(lat, lon, t)
+                # First calculate sun altitude to check if it's below horizon
+                altaz = AltAz(obstime=t, location=location)
+                sun_alt = get_sun(t).transform_to(altaz).alt.deg
+                
+                # Only use cache when sun is below horizon (sun_alt < 0)
+                cache_result = None
+                if sun_alt < 0:
+                    cache_result = get_cache(lat, lon, t)
                 
                 if cache_result:
                     # Use cached values
-                    sun_alt = cache_result['sun_alt']
                     moon_alt = cache_result['moon_alt']
                     mw_sb = cache_result['mw_brightness']
                     milky_way_visible = cache_result['milky_way_visible']
                     logging.debug(f"Using cached values: sun_alt={sun_alt:.2f}, moon_alt={moon_alt:.2f}, mw_sb={mw_sb:.2f}")
                 else:
-                    # Calculate new values
-                    altaz = AltAz(obstime=t, location=location)
-                    sun_alt = get_sun(t).transform_to(altaz).alt.deg
+                    # Calculate remaining values
                     moon_alt = get_body("moon", t, location=location).transform_to(altaz).alt.deg
                     
                     # compute zenith direction and its galactic latitude
@@ -551,8 +554,9 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
                     # visible boolean
                     milky_way_visible = (mw_sb <= mw_sb_threshold)
                     
-                    # Store in cache for future use
-                    set_cache(lat, lon, t, sun_alt, moon_alt, mw_sb, milky_way_visible)
+                    # Store in cache only when sun is below horizon
+                    if sun_alt < 0:
+                        set_cache(lat, lon, t, sun_alt, moon_alt, mw_sb, milky_way_visible)
                     
                     # logging
                     if (debug > 0):
@@ -567,7 +571,7 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
                 #logging.debug(f"{line}")
                 if (debug > 0):
                     logging.debug(f"moon_alt: {moon_alt}")
-                    logging.debug(f"moon_alt: {sun_alt}")
+                    logging.debug(f"sun_alt: {sun_alt}")
                     
                     
             # only calculate roll_stdev if both sun/moon are below limits

@@ -64,7 +64,12 @@ def calculate_celestial_values(lat, lon, t):
         airmass = 1.0
         mw_sb = mw_sb_plane + EXTINCTION_COEFF * (airmass - 1.0)
         
-        milky_way_visible = (mw_sb <= MW_SB_THRESHOLD)
+        milky_way_visible = bool(mw_sb <= MW_SB_THRESHOLD)
+        
+        # Convert numpy types to Python types for database compatibility
+        sun_alt = float(sun_alt)
+        moon_alt = float(moon_alt)
+        mw_sb = float(mw_sb)
         
         return sun_alt, moon_alt, mw_sb, milky_way_visible
     except Exception as e:
@@ -78,6 +83,9 @@ def store_in_cache(lat_rounded, lon_rounded, time_bucket, sun_alt, moon_alt, mw_
         conn = mysql.connector.connect(**DB_CONFIG)
         cursor = conn.cursor()
         
+        # Convert datetime to string format for MySQL
+        time_bucket_str = time_bucket.strftime('%Y-%m-%d %H:%M:%S')
+        
         query = """
         INSERT INTO celestial_cache (lat, lon, time_bucket, sun_alt, moon_alt, mw_brightness, milky_way_visible)
         VALUES (%s, %s, %s, %s, %s, %s, %s)
@@ -87,13 +95,13 @@ def store_in_cache(lat_rounded, lon_rounded, time_bucket, sun_alt, moon_alt, mw_
             mw_brightness = VALUES(mw_brightness),
             milky_way_visible = VALUES(milky_way_visible)
         """
-        cursor.execute(query, (lat_rounded, lon_rounded, time_bucket, sun_alt, moon_alt, mw_sb, milky_way_visible))
+        cursor.execute(query, (lat_rounded, lon_rounded, time_bucket_str, sun_alt, moon_alt, mw_sb, milky_way_visible))
         conn.commit()
         cursor.close()
         conn.close()
         return True
     except Error as e:
-        logger.warning(f"Cache storage failed: {e}")
+        logger.error(f"Cache storage failed: {e}")
         return False
 
 
@@ -105,6 +113,9 @@ def prepopulate(lat, lon, start_date, end_date):
     logger.info(f"Prepopulating cache for location: ({lat_rounded}, {lon_rounded})")
     logger.info(f"Date range: {start_date.date()} to {end_date.date()}")
     
+    print(f"Prepopulating cache for location: ({lat_rounded}, {lon_rounded})")
+    print(f"Date range: {start_date.date()} to {end_date.date()}")
+
     # Generate time buckets
     current = start_date
     bucket_seconds = CACHE_TIME_BUCKET_MIN * 60
@@ -124,12 +135,19 @@ def prepopulate(lat, lon, start_date, end_date):
         
         # Calculate values
         sun_alt, moon_alt, mw_sb, mw_visible = calculate_celestial_values(lat, lon, t)
+        print(f"sun_alt: {sun_alt}")
         
-        if sun_alt is not None:
+        # Only cache when sun is below horizon (sun_alt < 0)
+        if sun_alt is not None and sun_alt < 0:
+            print(f"store_in_cache lat={lat_rounded}, lon={lon_rounded}, dates {bucket_time} moon_alt: {moon_alt}")
             if store_in_cache(lat_rounded, lon_rounded, bucket_time, sun_alt, moon_alt, mw_sb, mw_visible):
                 stored += 1
             else:
                 errors += 1
+                print(f"error storing in cache for {bucket_time}")
+        elif sun_alt is not None:
+            # Skip storing when sun is above horizon
+            pass
         else:
             errors += 1
         
@@ -204,6 +222,7 @@ Examples:
     
     # Prepopulate
     try:
+        print(f"starting prepopulation for lat={args.lat}, lon={args.lon}, dates {start_date} to {end_date}")
         total, stored, errors = prepopulate(args.lat, args.lon, start_date, end_date)
         
         if errors > 0:
