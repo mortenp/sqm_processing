@@ -211,7 +211,11 @@ def get_cache(lat, lon, t_astropy):
         
         ## fixed lat lon for testing
         lat_rounded = 55
-        lon_rounded = 12.5
+
+        # cover Møn longitude range
+        if (lon_rounded > 11.6 and lon_rounded < 13.0):
+            lon_rounded = 12.5
+
         
         time_bucket = get_time_bucket(t_astropy)
         # conn = mysql.connector.connect(**DB_CONFIG)
