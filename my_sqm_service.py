@@ -575,9 +575,9 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
                     if (debug > 0):
                         logging.debug(f"moon_alt: {moon_alt}")
                         logging.debug(f"sun_alt: {sun_alt}")
-                else:
+                # else:
                     # Daytime (sun_alt >= 0): skip all calculations
-                    logging.debug(f"Daytime (sun_alt={sun_alt:.2f}), skipping sky quality calculations")
+                    # logging.debug(f"Daytime (sun_alt={sun_alt:.2f}), skipping sky quality calculations")
                 
                 last_altitude_time = t
                     
