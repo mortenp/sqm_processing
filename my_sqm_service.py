@@ -614,8 +614,13 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
         average_mpsas = 0
         logging.info(f"no lines for average_mpsas {average_mpsas}")
     output = output + f"Finished processing {linecounter} lines\n{used_lines} saved\n"
-    output = output + f"Average MPSAS {average_mpsas:.2f} \n"
+    output = output + f"Average MPSAS for {location_name}: {average_mpsas:.2f} \n"
     output = output + f"Maximum MPSAS {max_mpsas:.2f} \n"
+
+    logging.info(f"Average MPSAS for {location_name}: average_mpsas: {average_mpsas:.2f} max_mpsas: MPSAS: {max_mpsas:.2f} ")
+    output = output + f"Average MPSAS for {location_name}: {average_mpsas:.2f} \n"
+    output = output + f"Maximum MPSAS {max_mpsas:.2f} \n"
+
 
     return location_name, average_mpsas, serial_number, output
 
