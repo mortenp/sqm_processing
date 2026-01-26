@@ -98,7 +98,7 @@ serial_number = None
 
 ALLOWED_SERIALS = "2586,2588,6849,3387,6362,6860,6852,6859,6851,6857,6854,LANGELAND:,7118,7110,7115,7116,7122,7108,7109,7107"
 
-
+conn = mysql.connector.connect(**DB_CONFIG)
 
 def scale_series(series, new_min, new_max):
     arr = np.array(series)
@@ -151,11 +151,11 @@ def round_location(lat, lon):
 def init_cache_db():
     """Initialize MySQL database for caching celestial calculations"""
     try:
-        conn = mysql.connector.connect(
-            host=DB_CONFIG['host'],
-            user=DB_CONFIG['user'],
-            password=DB_CONFIG['password']
-        )
+        # conn = mysql.connector.connect(
+        #     host=DB_CONFIG['host'],
+        #     user=DB_CONFIG['user'],
+        #     password=DB_CONFIG['password']
+        # )
         cursor = conn.cursor()
         
         # Create database if it doesn't exist
@@ -180,7 +180,7 @@ def init_cache_db():
         cursor.execute(create_table_query)
         conn.commit()
         cursor.close()
-        conn.close()
+        # conn.close()
         logging.info("Cache database initialized successfully")
         return True
     except Error as e:
@@ -214,7 +214,7 @@ def get_cache(lat, lon, t_astropy):
         lon_rounded = 12.5
         
         time_bucket = get_time_bucket(t_astropy)
-        conn = mysql.connector.connect(**DB_CONFIG)
+        # conn = mysql.connector.connect(**DB_CONFIG)
         cursor = conn.cursor(dictionary=True)
         
         query = """
@@ -225,7 +225,7 @@ def get_cache(lat, lon, t_astropy):
         cursor.execute(query, (lat_rounded, lon_rounded, time_bucket))
         result = cursor.fetchone()
         cursor.close()
-        conn.close()
+        # conn.close()
         
         if result:
             logging.debug(f"Cache HIT: {lat_rounded}, {lon_rounded}, {time_bucket}")
@@ -250,7 +250,7 @@ def set_cache(lat, lon, t_astropy, sun_alt, moon_alt, mw_brightness, milky_way_v
             return False
         
         time_bucket = get_time_bucket(t_astropy)
-        conn = mysql.connector.connect(**DB_CONFIG)
+        # conn = mysql.connector.connect(**DB_CONFIG)
         cursor = conn.cursor()
         
         query = """
@@ -265,7 +265,7 @@ def set_cache(lat, lon, t_astropy, sun_alt, moon_alt, mw_brightness, milky_way_v
         cursor.execute(query, (lat_rounded, lon_rounded, time_bucket, sun_alt, moon_alt, mw_brightness, milky_way_visible))
         conn.commit()
         cursor.close()
-        conn.close()
+        # conn.close()
         logging.debug(f"Cache stored: {lat_rounded}, {lon_rounded}, {time_bucket}")
         return True
     except Error as e:
@@ -448,7 +448,7 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
                 #0.00;
                 #1
             utc_str, local_str, temp, volt, mpsas_str, dtype = parts[:6]
-
+            logging.debug(f"Reading line {linecounter}")
             try:
                 mpsas = float(mpsas_str)
                 #logging.debug(f"mpsas {mpsas}")
