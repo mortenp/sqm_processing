@@ -453,7 +453,7 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
             try:
                 mpsas = float(mpsas_str)
                 #logging.debug(f"mpsas {mpsas}")
-                t = parse_time(local_str)
+                t = parse_time(utc_str)
                 if t is None:
                     logging.exception(f"Error parsing time in line {linecounter}")
                     continue
