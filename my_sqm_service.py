@@ -228,7 +228,7 @@ def get_cache(lat, lon, t_astropy):
         # conn.close()
         
         if result:
-            logging.debug(f"Cache HIT: {lat_rounded}, {lon_rounded}, {time_bucket}")
+            # logging.debug(f"Cache HIT: {lat_rounded}, {lon_rounded}, {time_bucket}")
             return result
         else:
             logging.debug(f"Cache MISS: {lat_rounded}, {lon_rounded}, {time_bucket}")
@@ -448,7 +448,8 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
                 #0.00;
                 #1
             utc_str, local_str, temp, volt, mpsas_str, dtype = parts[:6]
-            logging.debug(f"Reading line {linecounter}")
+            if (linecounter%1000)==0:
+                logging.debug(f"Reading line {linecounter}")
             try:
                 mpsas = float(mpsas_str)
                 #logging.debug(f"mpsas {mpsas}")
@@ -533,7 +534,7 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
                         # use value from input, not cache
                         milky_way_visible = (mw_sb <= mw_sb_threshold)
                         
-                        logging.debug(f"Using cached values: sun_alt={sun_alt:.2f}, moon_alt={moon_alt:.2f}, mw_sb={mw_sb:.2f}")
+                        # logging.debug(f"Using cached values: sun_alt={sun_alt:.2f}, moon_alt={moon_alt:.2f}, mw_sb={mw_sb:.2f}")
                     else:
                         # Calculate remaining values
                         moon_alt = get_body("moon", t, location=location).transform_to(altaz).alt.deg
