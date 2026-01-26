@@ -529,7 +529,10 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
                         # Use cached values
                         moon_alt = cache_result['moon_alt']
                         mw_sb = cache_result['mw_brightness']
-                        milky_way_visible = cache_result['milky_way_visible']
+                        # milky_way_visible = cache_result['milky_way_visible']
+                        # use value from input, not cache
+                        milky_way_visible = (mw_sb <= mw_sb_threshold)
+                        
                         logging.debug(f"Using cached values: sun_alt={sun_alt:.2f}, moon_alt={moon_alt:.2f}, mw_sb={mw_sb:.2f}")
                     else:
                         # Calculate remaining values
