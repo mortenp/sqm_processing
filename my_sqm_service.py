@@ -1,7 +1,7 @@
 from fastapi import FastAPI, UploadFile, File, Query, APIRouter, Form
 from fastapi.responses import StreamingResponse, JSONResponse, PlainTextResponse, HTMLResponse
 from astropy.time import Time
-from astropy.coordinates import get_sun, get_moon, get_body, EarthLocation, AltAz, SkyCoord
+from astropy.coordinates import get_sun, get_body, EarthLocation, AltAz, SkyCoord #get_moon, 
 from astropy import units as u
 from datetime import datetime
 import numpy as np
