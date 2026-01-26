@@ -22,7 +22,7 @@ def setup_cache_database():
     print()
     
     mysql_host = input("MySQL host [localhost]: ").strip() or "localhost"
-    mysql_user = input("MySQL root user [root]: ").strip() or "root"
+    mysql_user = input("MySQL root user [root]: ").strip() or "morten"
     mysql_password = getpass.getpass("MySQL root password: ")
     
     # Try to connect

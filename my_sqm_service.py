@@ -84,7 +84,7 @@ CACHE_TIME_BUCKET_MIN = 20  # Cache granularity: 20 minutes
 
 DB_CONFIG = {
     'host': 'localhost',
-    'user': 'root',
+    'user': 'morten',
     'password': 'your_password',  # Change this
     'database': 'sqm_cache',
     'raise_on_warnings': False
