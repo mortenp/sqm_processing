@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SQM Data Processing</title>
+<style>
+body { font-family: sans-serif; margin: 2em; }
+input, button { margin: 0.5em 0; }
+.helptext {font-size: 0.8em;}
+#result { margin-top: 1em; padding: 1em; border: 1px solid #ccc; }
+</style>
+</head>
+<body>
+<h2>Upload SQM file for processing</h2>
+<form id="uploadForm">
+<strong>File:</strong>  <input type="file" id="fileInput" required><br>
+   <p>
+    <label>Sun max altitude:
+    <input type="number" step="1" id="sun_max_alt" value="-15" min="0">
+  </label>
+ <br><span class="helptext">Discard readings if the sun is above this altitude</span>
+   </p>
+   
+  <p>
+    <label>Moon max altitude:
+    <input type="number" step="1" id="moon_max_alt" value="-5" min="0">
+  </label>
+    <br><span class="helptext">Discard readings if the moon is above this altitude</span>
+   </p>
+   
+  <p>
+    <label>MPSAS minimum:
+    <input type="number" step="1" id="mpsas_limit" value="18" min="0">
+  </label>
+ <br><span class="helptext">Discard readings lower than this value, since they are probably errors</span>
+   </p>
+   
+  <label>Time between measurements (minutes):
+    <input type="number" id="rollDuration" value="5" min="1">
+  </label>
+   <br><span class="helptext">Number of minutes between logging, set in UDM software</span>
+   </p>
+   
+  <p>
+  <label>Max stdev for cloud estimate:
+    <input type="number" step="0.001" id="stdevThreshold" value="0.3" min="0">
+  </label>
+   <br><span class="helptext">Discard readings if the standard deviation over 15 min is higher than this number</span>
+  </p>
+
+ <p>
+  <label>Milky Way surface brightness at zenith limit:
+    <input type="number" step="0.001" id="mw_sb_threshold" value="21.5" min="0">
+  </label>
+   <br><span class="helptext">A variable in the output is set to true if MW brighter than this value</span>
+  </p>
+testmode
+ <p>
+  <label>Test mode:
+    <input type="number" step="1" id="testmode" value="0" min="0">
+  </label>
+   <br><span class="helptext">1 = test</span>
+  </p>
+
+  <button type="button" id="uploadBtn">Upload</button>
+</form>
+
+<div id="status"></div>
+<div id="result"></div>
+
+<script>
+document.getElementById("uploadBtn").addEventListener("click", async () => {
+    const fileInput = document.getElementById("fileInput");
+    if (!fileInput.files.length) {
+        alert("Select a file first!");
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", fileInput.files[0]);
+    formData.append("roll_duration", document.getElementById("rollDuration").value);
+    formData.append("stdev_threshold", document.getElementById("stdevThreshold").value);
+    formData.append("sun_max_alt", document.getElementById("sun_max_alt").value);
+    formData.append("moon_max_alt", document.getElementById("moon_max_alt").value);
+    formData.append("mpsas_limit", document.getElementById("mpsas_limit").value);
+    formData.append("mw_sb_threshold", document.getElementById("mw_sb_threshold").value);
+    formData.append("testmode", document.getElementById("testmode").value);
+    
+    const status = document.getElementById("status");
+    const result = document.getElementById("result");
+    status.textContent = "Processing...";
+    result.innerHTML = "Uploading and processing";
+
+    try {
+        const response = await fetch("/sqm_processing/process", { method: "POST", body: formData });
+        if (!response.ok) throw new Error(`Server error: ${response.status}`);
+
+        const html = await response.text();  // not blob
+        result.innerHTML = html;
+        status.textContent = "Processing complete.";
+    } catch (err) {
+        console.error(err);
+        status.textContent = "Error during processing: " + err.message;
+    }
+});
+</script>
+</body>
+</html>
