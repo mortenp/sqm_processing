@@ -23,6 +23,9 @@ import random
 import math
 
 import logging
+import mysql.connector
+from mysql.connector import Error
+import json
 
 import matplotlib
 matplotlib.rcParams['font.family'] = 'DejaVu Sans'  # or 'Liberation Sans', 'Arial', etc.
@@ -41,6 +44,12 @@ logging.basicConfig(filename="/srv/www/d9.pihl.net/public_html/sqm_processing/lo
 logging.getLogger('matplotlib.font_manager').setLevel(logging.ERROR)
 
 app = FastAPI(title="SQM Processing Service")
+
+# Initialize cache on startup
+@app.on_event("startup")
+async def startup_event():
+    """Initialize database cache on application startup"""
+    init_cache_db()
 
 UPLOAD_DIR = "/srv/www/d9.pihl.net/public_html/sqm_processing/uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -68,6 +77,18 @@ MW_SB_THRESHOLD = 21.5      # max mag/arcsec^2 to consider "Milky Way visible"
 
 LIMIT_SERIALS = 0
 # --------------------------------------------------------
+
+# MySQL Caching Configuration
+CACHE_ENABLED = True  # Set to False to disable caching
+CACHE_TIME_BUCKET_MIN = 20  # Cache granularity: 20 minutes
+
+DB_CONFIG = {
+    'host': 'localhost',
+    'user': 'root',
+    'password': 'your_password',  # Change this
+    'database': 'sqm_cache',
+    'raise_on_warnings': False
+}
 
 lat = None
 lon = None
@@ -101,7 +122,151 @@ def estimate_mw_surface_brightness(airmass, base_sb=20.5, extinction_coeff=0.15)
     # extra extinction relative to zenith
     extra_mag = extinction_coeff * (airmass - 1.0)
     return base_sb + extra_mag
+
+
+# ==================== CACHING FUNCTIONS ====================
+
+def round_location(lat, lon):
+    """
+    Round latitude and longitude for cache key optimization.
+    Latitude: rounded to nearest whole degree
+    Longitude: rounded to nearest 0.5 degree
     
+    This reduces cache fragmentation while maintaining sufficient precision
+    for astronomical calculations (input precision is 0.001 degree).
+    """
+    if lat is None or lon is None:
+        return None, None
+    
+    # Round latitude to nearest 1.0 degree
+    lat_rounded = round(float(lat), 0)
+    
+    # Round longitude to nearest 0.5 degree
+    lon_rounded = round(float(lon) * 2) / 2
+    
+    return lat_rounded, lon_rounded
+
+
+def init_cache_db():
+    """Initialize MySQL database for caching celestial calculations"""
+    try:
+        conn = mysql.connector.connect(
+            host=DB_CONFIG['host'],
+            user=DB_CONFIG['user'],
+            password=DB_CONFIG['password']
+        )
+        cursor = conn.cursor()
+        
+        # Create database if it doesn't exist
+        cursor.execute(f"CREATE DATABASE IF NOT EXISTS {DB_CONFIG['database']}")
+        cursor.execute(f"USE {DB_CONFIG['database']}")
+        
+        # Create cache table
+        create_table_query = """
+        CREATE TABLE IF NOT EXISTS celestial_cache (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            lat DECIMAL(10, 6) NOT NULL,
+            lon DECIMAL(10, 6) NOT NULL,
+            time_bucket DATETIME NOT NULL,
+            sun_alt FLOAT,
+            moon_alt FLOAT,
+            mw_brightness FLOAT,
+            milky_way_visible BOOLEAN,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY unique_calc (lat, lon, time_bucket)
+        )
+        """
+        cursor.execute(create_table_query)
+        conn.commit()
+        cursor.close()
+        conn.close()
+        logging.info("Cache database initialized successfully")
+        return True
+    except Error as e:
+        logging.warning(f"Cache DB initialization failed: {e}. Caching disabled.")
+        return False
+
+
+def get_time_bucket(t_astropy, bucket_minutes=CACHE_TIME_BUCKET_MIN):
+    """Round time to nearest bucket for caching"""
+    dt = t_astropy.datetime
+    bucket_seconds = bucket_minutes * 60
+    epoch = datetime(1970, 1, 1)
+    diff = (dt - epoch).total_seconds()
+    rounded_diff = (diff // bucket_seconds) * bucket_seconds
+    return epoch + __import__('datetime').timedelta(seconds=rounded_diff)
+
+
+def get_cache(lat, lon, t_astropy):
+    """Retrieve cached celestial values for location and time"""
+    if not CACHE_ENABLED:
+        return None
+    
+    try:
+        # Round location for cache lookup
+        lat_rounded, lon_rounded = round_location(lat, lon)
+        if lat_rounded is None or lon_rounded is None:
+            return None
+        
+        time_bucket = get_time_bucket(t_astropy)
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cursor = conn.cursor(dictionary=True)
+        
+        query = """
+        SELECT sun_alt, moon_alt, mw_brightness, milky_way_visible 
+        FROM celestial_cache 
+        WHERE lat = %s AND lon = %s AND time_bucket = %s
+        """
+        cursor.execute(query, (lat_rounded, lon_rounded, time_bucket))
+        result = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        
+        if result:
+            logging.debug(f"Cache HIT: {lat_rounded}, {lon_rounded}, {time_bucket}")
+            return result
+        else:
+            logging.debug(f"Cache MISS: {lat_rounded}, {lon_rounded}, {time_bucket}")
+            return None
+    except Error as e:
+        logging.warning(f"Cache retrieval failed: {e}")
+        return None
+
+
+def set_cache(lat, lon, t_astropy, sun_alt, moon_alt, mw_brightness, milky_way_visible):
+    """Store calculated celestial values in cache"""
+    if not CACHE_ENABLED:
+        return False
+    
+    try:
+        # Round location for cache storage
+        lat_rounded, lon_rounded = round_location(lat, lon)
+        if lat_rounded is None or lon_rounded is None:
+            return False
+        
+        time_bucket = get_time_bucket(t_astropy)
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cursor = conn.cursor()
+        
+        query = """
+        INSERT INTO celestial_cache (lat, lon, time_bucket, sun_alt, moon_alt, mw_brightness, milky_way_visible)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        ON DUPLICATE KEY UPDATE 
+            sun_alt = VALUES(sun_alt), 
+            moon_alt = VALUES(moon_alt),
+            mw_brightness = VALUES(mw_brightness),
+            milky_way_visible = VALUES(milky_way_visible)
+        """
+        cursor.execute(query, (lat_rounded, lon_rounded, time_bucket, sun_alt, moon_alt, mw_brightness, milky_way_visible))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        logging.debug(f"Cache stored: {lat_rounded}, {lon_rounded}, {time_bucket}")
+        return True
+    except Error as e:
+        logging.warning(f"Cache storage failed: {e}")
+        return False
+
     
 
 
@@ -351,53 +516,50 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
 #             logging.debug(f"set roll_duration_min: {roll_duration_min}")
             
             if last_altitude_time is None or (t - last_altitude_time) > (roll_duration_min * u.min).to(u.day):
-
-                altaz = AltAz(obstime=t, location=location)
-                sun_alt = get_sun(t).transform_to(altaz).alt.deg
-                moon_alt = get_body("moon", t, location=location).transform_to(altaz).alt.deg
+                # Try to get cached values first
+                cache_result = get_cache(lat, lon, t)
                 
-#                 logging.debug(f"Finding Deneb's location")
-#                 deneb = SkyCoord(ra=310.35797 * u.deg, dec=45.28034 * u.deg, frame="icrs")
-#                 #301.0041667
-#                 #ra_decimal = 15 * 20 + 41/4 + 25.9/240
-#                 #logging.debug(f"Deneb's ra {ra_decimal}")
-#                 #deneb = SkyCoord.from_name("Deneb")
-#                 #logging.debug(f"Deneb's location found")
-#                 
-# 
-#                 deneb_altaz = deneb.transform_to(AltAz(obstime=t, location=location))
-#                 #print(f"Deneb's Altitude = {deneb_altaz.alt:.2}")
-#                 logging.debug(f"Deneb's Altitude: {deneb_altaz.alt:.2f}")
-                #deneb_alt = get_body("deneb", t, location=location).transform_to(altaz).alt.deg
-                #20 41 25.91514 +45 16 49.2197
-#                 Right ascension	20h 41m 25.9s[2]
-#                 Declination	+45° 16′ 49″[2]
-                
-                # compute zenith direction and its galactic latitude
-                zen_altaz = AltAz(obstime=t, location=location, alt=90*u.deg, az=0*u.deg)  # az arbitrary at zenith
-                zenith = SkyCoord(zen_altaz)                     # create SkyCoord in AltAz then transform
-                zenith_gal = zenith.transform_to('galactic')
-                b_deg = abs(zenith_gal.b.deg)
-                
-                # scale base surface brightness by galactic latitude.
-                # simple linear fade: at plane b=0 -> BASE_MW_SB_AT_PLANE
-                # at poles b=90 -> BASE_MW_SB_AT_PLANE + PLANE_TO_POLE_FADE
-                mw_sb_plane = BASE_MW_SB_AT_PLANE + (PLANE_TO_POLE_FADE * (b_deg / 90.0))
-                
-                # compute airmass for zenith direction (zenith angle = 90 - alt = 0 for zenith)
-                # airmass at zenith is 1.0, but keep formula for completeness if you sample off-zenith
-                zen_alt = 90.0 - 90.0   # zero
-                airmass = 1.0
-                
-                # apply extinction
-                mw_sb = mw_sb_plane + EXTINCTION_COEFF * (airmass - 1.0)
-                
-                # visible boolean
-                milky_way_visible = (mw_sb <= mw_sb_threshold)
-                
-                # logging
-                if (debug > 0):
-                    logging.debug(f"zenith b={b_deg:.2f}°, mw_sb_plane={mw_sb_plane:.2f}, mw_sb={mw_sb:.2f}, visible={milky_way_visible}")
+                if cache_result:
+                    # Use cached values
+                    sun_alt = cache_result['sun_alt']
+                    moon_alt = cache_result['moon_alt']
+                    mw_sb = cache_result['mw_brightness']
+                    milky_way_visible = cache_result['milky_way_visible']
+                    logging.debug(f"Using cached values: sun_alt={sun_alt:.2f}, moon_alt={moon_alt:.2f}, mw_sb={mw_sb:.2f}")
+                else:
+                    # Calculate new values
+                    altaz = AltAz(obstime=t, location=location)
+                    sun_alt = get_sun(t).transform_to(altaz).alt.deg
+                    moon_alt = get_body("moon", t, location=location).transform_to(altaz).alt.deg
+                    
+                    # compute zenith direction and its galactic latitude
+                    zen_altaz = AltAz(obstime=t, location=location, alt=90*u.deg, az=0*u.deg)  # az arbitrary at zenith
+                    zenith = SkyCoord(zen_altaz)                     # create SkyCoord in AltAz then transform
+                    zenith_gal = zenith.transform_to('galactic')
+                    b_deg = abs(zenith_gal.b.deg)
+                    
+                    # scale base surface brightness by galactic latitude.
+                    # simple linear fade: at plane b=0 -> BASE_MW_SB_AT_PLANE
+                    # at poles b=90 -> BASE_MW_SB_AT_PLANE + PLANE_TO_POLE_FADE
+                    mw_sb_plane = BASE_MW_SB_AT_PLANE + (PLANE_TO_POLE_FADE * (b_deg / 90.0))
+                    
+                    # compute airmass for zenith direction (zenith angle = 90 - alt = 0 for zenith)
+                    # airmass at zenith is 1.0, but keep formula for completeness if you sample off-zenith
+                    zen_alt = 90.0 - 90.0   # zero
+                    airmass = 1.0
+                    
+                    # apply extinction
+                    mw_sb = mw_sb_plane + EXTINCTION_COEFF * (airmass - 1.0)
+                    
+                    # visible boolean
+                    milky_way_visible = (mw_sb <= mw_sb_threshold)
+                    
+                    # Store in cache for future use
+                    set_cache(lat, lon, t, sun_alt, moon_alt, mw_sb, milky_way_visible)
+                    
+                    # logging
+                    if (debug > 0):
+                        logging.debug(f"zenith b={b_deg:.2f}°, mw_sb_plane={mw_sb_plane:.2f}, mw_sb={mw_sb:.2f}, visible={milky_way_visible}")
                 
                 if (milky_way_visible != last_milky_way_visible):
                     last_milky_way_visible = milky_way_visible
