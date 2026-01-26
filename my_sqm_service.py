@@ -69,11 +69,12 @@ TESTMODE = 0
 DEFAULT_LAT = 56.04
 DEFAULT_LONG = 10.87  
 
-# Milky Way calc
-# parameters (make configurable)
-BASE_MW_SB = 20.5            # mag/arcsec^2 at zenith (tune to your site)
-EXTINCTION_COEFF = 0.15     # mag per airmass (typical site value)
-MW_SB_THRESHOLD = 21.5      # max mag/arcsec^2 to consider "Milky Way visible"
+# Milky Way calc - parameters (make configurable)
+BASE_MW_SB = 20.5                  # mag/arcsec^2 at zenith (tune to your site)
+BASE_MW_SB_AT_PLANE = 20.0         # mag/arcsec² for zenith lying exactly on galactic plane
+PLANE_TO_POLE_FADE = 2.5           # additional mag from b=0 -> |b|=90 (tune to site)
+EXTINCTION_COEFF = 0.15            # mag per airmass (typical site value)
+MW_SB_THRESHOLD = 21.5             # max mag/arcsec^2 to consider "Milky Way visible"
 
 LIMIT_SERIALS = 0
 # --------------------------------------------------------
@@ -341,11 +342,7 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
     from collections import deque
     from datetime import timedelta, datetime
     
-    # parameters (tweak)
-    BASE_MW_SB_AT_PLANE = 20.0     # mag/arcsec² for zenith lying exactly on galactic plane
-    PLANE_TO_POLE_FADE = 2.5       # additional mag from b=0 -> |b|=90 (tune to site)
-    EXTINCTION_COEFF = 0.15        # mag per airmass
-    MW_SB_THRESHOLD = 21.5         # pass if estimated SB <= this (numerically smaller = brighter)
+    # Using module-level configuration constants
 
 
 
