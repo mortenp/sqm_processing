@@ -209,6 +209,10 @@ def get_cache(lat, lon, t_astropy):
         if lat_rounded is None or lon_rounded is None:
             return None
         
+        ## fixed lat lon for testing
+        lat_rounded = 55
+        lon_rounded = 12.5
+        
         time_bucket = get_time_bucket(t_astropy)
         conn = mysql.connector.connect(**DB_CONFIG)
         cursor = conn.cursor(dictionary=True)
@@ -517,61 +521,61 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
                 altaz = AltAz(obstime=t, location=location)
                 sun_alt = get_sun(t).transform_to(altaz).alt.deg
                 
-                # Only use cache when sun is below horizon (sun_alt < 0)
-                cache_result = None
+                # Only process when sun is below horizon (sun_alt < 0)
                 if sun_alt < 0:
                     cache_result = get_cache(lat, lon, t)
-                
-                if cache_result:
-                    # Use cached values
-                    moon_alt = cache_result['moon_alt']
-                    mw_sb = cache_result['mw_brightness']
-                    milky_way_visible = cache_result['milky_way_visible']
-                    logging.debug(f"Using cached values: sun_alt={sun_alt:.2f}, moon_alt={moon_alt:.2f}, mw_sb={mw_sb:.2f}")
-                else:
-                    # Calculate remaining values
-                    moon_alt = get_body("moon", t, location=location).transform_to(altaz).alt.deg
                     
-                    # compute zenith direction and its galactic latitude
-                    zen_altaz = AltAz(obstime=t, location=location, alt=90*u.deg, az=0*u.deg)  # az arbitrary at zenith
-                    zenith = SkyCoord(zen_altaz)                     # create SkyCoord in AltAz then transform
-                    zenith_gal = zenith.transform_to('galactic')
-                    b_deg = abs(zenith_gal.b.deg)
-                    
-                    # scale base surface brightness by galactic latitude.
-                    # simple linear fade: at plane b=0 -> BASE_MW_SB_AT_PLANE
-                    # at poles b=90 -> BASE_MW_SB_AT_PLANE + PLANE_TO_POLE_FADE
-                    mw_sb_plane = BASE_MW_SB_AT_PLANE + (PLANE_TO_POLE_FADE * (b_deg / 90.0))
-                    
-                    # compute airmass for zenith direction (zenith angle = 90 - alt = 0 for zenith)
-                    # airmass at zenith is 1.0, but keep formula for completeness if you sample off-zenith
-                    zen_alt = 90.0 - 90.0   # zero
-                    airmass = 1.0
-                    
-                    # apply extinction
-                    mw_sb = mw_sb_plane + EXTINCTION_COEFF * (airmass - 1.0)
-                    
-                    # visible boolean
-                    milky_way_visible = (mw_sb <= mw_sb_threshold)
-                    
-                    # Store in cache only when sun is below horizon
-                    if sun_alt < 0:
+                    if cache_result:
+                        # Use cached values
+                        moon_alt = cache_result['moon_alt']
+                        mw_sb = cache_result['mw_brightness']
+                        milky_way_visible = cache_result['milky_way_visible']
+                        logging.debug(f"Using cached values: sun_alt={sun_alt:.2f}, moon_alt={moon_alt:.2f}, mw_sb={mw_sb:.2f}")
+                    else:
+                        # Calculate remaining values
+                        moon_alt = get_body("moon", t, location=location).transform_to(altaz).alt.deg
+                        
+                        # compute zenith direction and its galactic latitude
+                        zen_altaz = AltAz(obstime=t, location=location, alt=90*u.deg, az=0*u.deg)  # az arbitrary at zenith
+                        zenith = SkyCoord(zen_altaz)                     # create SkyCoord in AltAz then transform
+                        zenith_gal = zenith.transform_to('galactic')
+                        b_deg = abs(zenith_gal.b.deg)
+                        
+                        # scale base surface brightness by galactic latitude.
+                        # simple linear fade: at plane b=0 -> BASE_MW_SB_AT_PLANE
+                        # at poles b=90 -> BASE_MW_SB_AT_PLANE + PLANE_TO_POLE_FADE
+                        mw_sb_plane = BASE_MW_SB_AT_PLANE + (PLANE_TO_POLE_FADE * (b_deg / 90.0))
+                        
+                        # compute airmass for zenith direction (zenith angle = 90 - alt = 0 for zenith)
+                        # airmass at zenith is 1.0, but keep formula for completeness if you sample off-zenith
+                        zen_alt = 90.0 - 90.0   # zero
+                        airmass = 1.0
+                        
+                        # apply extinction
+                        mw_sb = mw_sb_plane + EXTINCTION_COEFF * (airmass - 1.0)
+                        
+                        # visible boolean
+                        milky_way_visible = (mw_sb <= mw_sb_threshold)
+                        
+                        # Store in cache
                         set_cache(lat, lon, t, sun_alt, moon_alt, mw_sb, milky_way_visible)
+                        
+                        # logging
+                        if (debug > 0):
+                            logging.debug(f"zenith b={b_deg:.2f}°, mw_sb_plane={mw_sb_plane:.2f}, mw_sb={mw_sb:.2f}, visible={milky_way_visible}")
                     
-                    # logging
-                    if (debug > 0):
-                        logging.debug(f"zenith b={b_deg:.2f}°, mw_sb_plane={mw_sb_plane:.2f}, mw_sb={mw_sb:.2f}, visible={milky_way_visible}")
-                
-                if (milky_way_visible != last_milky_way_visible):
-                    last_milky_way_visible = milky_way_visible
-                    logging.debug(f"change: milky_way_visible: {milky_way_visible}")
+                    if (milky_way_visible != last_milky_way_visible):
+                        last_milky_way_visible = milky_way_visible
+                        logging.debug(f"change: milky_way_visible: {milky_way_visible}")
 
+                    if (debug > 0):
+                        logging.debug(f"moon_alt: {moon_alt}")
+                        logging.debug(f"sun_alt: {sun_alt}")
+                else:
+                    # Daytime (sun_alt >= 0): skip all calculations
+                    logging.debug(f"Daytime (sun_alt={sun_alt:.2f}), skipping sky quality calculations")
+                
                 last_altitude_time = t
-                #logging.debug(f"Updated altitudes at line {linecounter}: sun={sun_alt:.3f}, moon={moon_alt:.3f}")
-                #logging.debug(f"{line}")
-                if (debug > 0):
-                    logging.debug(f"moon_alt: {moon_alt}")
-                    logging.debug(f"sun_alt: {sun_alt}")
                     
                     
             # only calculate roll_stdev if both sun/moon are below limits

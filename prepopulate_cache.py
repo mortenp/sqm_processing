@@ -50,28 +50,30 @@ def calculate_celestial_values(lat, lon, t):
         
         # Sun altitude
         sun_alt = get_sun(t).transform_to(altaz).alt.deg
-        
-        # Moon altitude (using get_body)
-        moon_alt = get_body("moon", t, location=location).transform_to(altaz).alt.deg
-        
-        # Milky Way brightness calculation
-        zen_altaz = AltAz(obstime=t, location=location, alt=90*u.deg, az=0*u.deg)
-        zenith = SkyCoord(zen_altaz)
-        zenith_gal = zenith.transform_to('galactic')
-        b_deg = abs(zenith_gal.b.deg)
-        
-        mw_sb_plane = BASE_MW_SB_AT_PLANE + (PLANE_TO_POLE_FADE * (b_deg / 90.0))
-        airmass = 1.0
-        mw_sb = mw_sb_plane + EXTINCTION_COEFF * (airmass - 1.0)
-        
-        milky_way_visible = bool(mw_sb <= MW_SB_THRESHOLD)
-        
-        # Convert numpy types to Python types for database compatibility
-        sun_alt = float(sun_alt)
-        moon_alt = float(moon_alt)
-        mw_sb = float(mw_sb)
-        
-        return sun_alt, moon_alt, mw_sb, milky_way_visible
+        if sun_alt is not None and sun_alt < 0:
+            # Moon altitude (using get_body)
+            moon_alt = get_body("moon", t, location=location).transform_to(altaz).alt.deg
+            
+            # Milky Way brightness calculation
+            zen_altaz = AltAz(obstime=t, location=location, alt=90*u.deg, az=0*u.deg)
+            zenith = SkyCoord(zen_altaz)
+            zenith_gal = zenith.transform_to('galactic')
+            b_deg = abs(zenith_gal.b.deg)
+            
+            mw_sb_plane = BASE_MW_SB_AT_PLANE + (PLANE_TO_POLE_FADE * (b_deg / 90.0))
+            airmass = 1.0
+            mw_sb = mw_sb_plane + EXTINCTION_COEFF * (airmass - 1.0)
+            
+            milky_way_visible = bool(mw_sb <= MW_SB_THRESHOLD)
+            
+            # Convert numpy types to Python types for database compatibility
+            sun_alt = float(sun_alt)
+            moon_alt = float(moon_alt)
+            mw_sb = float(mw_sb)
+            
+            return sun_alt, moon_alt, mw_sb, milky_way_visible
+        else:
+            return None, None, None, None
     except Exception as e:
         logger.warning(f"Error calculating values for {t}: {e}")
         return None, None, None, None
@@ -135,21 +137,25 @@ def prepopulate(lat, lon, start_date, end_date):
         
         # Calculate values
         sun_alt, moon_alt, mw_sb, mw_visible = calculate_celestial_values(lat, lon, t)
-        print(f"sun_alt: {sun_alt}")
+        if sun_alt is not None:
+            print(f"sun_alt: {sun_alt}")
+        else:
+            print("sun_alt: None")  
         
         # Only cache when sun is below horizon (sun_alt < 0)
         if sun_alt is not None and sun_alt < 0:
-            print(f"store_in_cache lat={lat_rounded}, lon={lon_rounded}, dates {bucket_time} moon_alt: {moon_alt}")
+            # print(f"store_in_cache lat={lat_rounded}, lon={lon_rounded}, dates {bucket_time} moon_alt: {moon_alt}")
             if store_in_cache(lat_rounded, lon_rounded, bucket_time, sun_alt, moon_alt, mw_sb, mw_visible):
                 stored += 1
             else:
                 errors += 1
                 print(f"error storing in cache for {bucket_time}")
         elif sun_alt is not None:
+                # print(f"NOT storing in cache sun_alt = {sun_alt}")
             # Skip storing when sun is above horizon
-            pass
-        else:
-            errors += 1
+                pass
+        # else:
+        #     errors += 1
         
         total_buckets += 1
         
