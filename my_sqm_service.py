@@ -389,6 +389,7 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
         milky_way_visible_count = 0 # counter for MW visible occurrences
         cloudy_count = 0
         sun_moon_lines_rejected = 0   
+        mpsas_lines_rejected = 0    
         
         # write header
         out.write("UTC_TIME;LOCAL_TIME;SUN_ALT;MOON_ALT;MPSAS;MW_BRIGHTNESS;MW_VISIBLE;ROLL_STDEV\n")
@@ -442,7 +443,7 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
             
             linecounter += 1
             line = line.strip()
-            #logging.debug(f"Line: {linecounter}: {line}")
+            # logging.debug(f"Line: {linecounter}: {line}")
             
             if not line:
                 continue
@@ -462,10 +463,12 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
                 logging.debug(f"Reading line {linecounter}")
             try:
                 mpsas = float(mpsas_str)
-                if (mpsas > mpsas_limit ): # can be rejected already here
+                # logging.debug(f"check mpsas:{mpsas} > {mpsas_limit}")
+                if (mpsas < mpsas_limit ): # can be rejected already here
                     mpsas_lines_rejected += 1
                     continue
-                
+                   
+                    
                 #logging.debug(f"mpsas {mpsas}")
                 t = parse_time(utc_str)
                 if t is None:
@@ -654,12 +657,17 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
     output = output + f"Milky way visible count: {milky_way_visible_count} \n"
     output = output + f"Cloudy count (stdev > {stdev_threshold}): {cloudy_count} \n"
     output = output + f"Sun/Moon altitude lines rejected: {sun_moon_lines_rejected} \n" 
+    output = output + f"MPSAS lines rejected (MPSAS < {mpsas_limit}): {mpsas_lines_rejected} \n"
 
     logging.info(f"Average MPSAS for {location_name}: average_mpsas: {average_mpsas:.2f} max_mpsas: MPSAS: {max_mpsas:.2f} ")
     output = output + f"Average MPSAS for {location_name}: {average_mpsas:.2f} \n"
     output = output + f"Maximum MPSAS {max_mpsas:.2f} \n"
 
-
+    logging.info(f"milky way visible rejected {milky_way_visible_count} \n")
+    logging.info(f"cloudy rejected {cloudy_count} \n")
+    logging.info(f"sun/moon alt rejected {sun_moon_lines_rejected} \n")
+    logging.info(f"MPSAS lines rejected {mpsas_lines_rejected} \n")
+    
     return location_name, average_mpsas, serial_number, output
 
 
