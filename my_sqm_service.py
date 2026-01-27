@@ -360,6 +360,7 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
     logging.debug(f"process_stream file: {file_path}")
     #output = output + f"processing file: {file_path} \nwith params mpsas_limit {mpsas_limit} sun_max_alt {sun_max_alt} moon_max_alt {moon_max_alt} \nroll_duration_min {roll_duration_min} stdev_threshold {stdev_threshold}\n"
     output = output + f"Processing file with params: \nmpsas_limit {mpsas_limit} \nsun_max_alt {sun_max_alt} \nmoon_max_alt {moon_max_alt} \nroll_duration_min {roll_duration_min} \nstdev_threshold {stdev_threshold}\n"
+    logging.debug(f"Processing file with params: \nmpsas_limit {mpsas_limit} \nsun_max_alt {sun_max_alt} \nmoon_max_alt {moon_max_alt} \nroll_duration_min {roll_duration_min} \nstdev_threshold {stdev_threshold}\n")
     
     buffer = deque()  # stores (Time, MPSAS)
     linecounter = 0
@@ -461,6 +462,10 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
                 logging.debug(f"Reading line {linecounter}")
             try:
                 mpsas = float(mpsas_str)
+                if (mpsas > mpsas_limit ): # can be rejected already here
+                    mpsas_lines_rejected += 1
+                    continue
+                
                 #logging.debug(f"mpsas {mpsas}")
                 t = parse_time(utc_str)
                 if t is None:
@@ -470,9 +475,7 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
                 logging.exception(f"Error parsing line {linecounter}")
                 continue
             
-            if (mpsas > mpsas_limit ): # can be rejected already here
-                mpsas_lines_rejected += 1
-                continue
+            
             
             # append to rolling buffer
             #logging.debug(f"appending to buffer t mpsas {t} {mpsas}")
