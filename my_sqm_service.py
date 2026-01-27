@@ -376,7 +376,7 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
     
     line_limit = 10000000
     
-    max_mpsas = 0;
+    max_mpsas = 0
     
     if testmode > 0:
         file_path = "/srv/www/d9.pihl.net/public_html/sqm_processing/uploads/20240522_220724_DSMN-2.dat"
@@ -612,7 +612,7 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
                         out.write(f"{utc_str};{local_str};{sun_alt:.3f};{moon_alt:.3f};{mpsas:.3f};{mw_sb:.2f};{milky_way_visible};{roll_stdev:.4f}\n")
                     #print(f"Output line: {utc_str};{local_str};{sun_alt:.3f};{moon_alt:.3f};{mpsas:.3f};{roll_stdev:.4f}")
                         total_mpsas = total_mpsas + mpsas
-                        used_lines = used_lines + 1;
+                        used_lines = used_lines + 1
                         
                         # keep maximum mpsas in file
                         if mpsas > max_mpsas:
@@ -623,15 +623,15 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
                 else:
                     cloudy_count += 1
                     #logging.debug(f"Line {linecounter}: Rejected due to roll_stdev {roll_stdev:.4f}")
-                    # output = output + f"Line {linecounter}: Rejected MPSAS {mpsas} with roll_stdev {roll_stdev:.4f}\n"        
-                        
+                    # output = output + f"Line {linecounter}: Rejected MPSAS {mpsas} with roll_stdev {roll_stdev:.4f}\n"
+            else:
+                # sun_alt >= sun_max_alt or moon_alt >= moon_max_alt - conditions not met
+                sun_moon_lines_rejected += 1
+            
             if (used_lines > line_limit):
                 logging.info(f"break after {linecounter} lines, used_lines {used_lines}")
                 output = output + f"Ending after {used_lines} good lines, because your device is not registered\n"
-                break
-            
-            else: # sun_alt < sun_max_alt and moon_alt < moon_max_alt
-                sun_moon_lines_rejected += 1    
+                break    
                 
     print(f"Finished processing {linecounter} lines, {used_lines} saved to {output_file_path}")
     logging.info(f"Finished processing {linecounter} lines, {used_lines} saved to {output_file_path}")
