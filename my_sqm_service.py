@@ -63,6 +63,7 @@ DEFAULT_STDEV_THRESHOLD = 0.05
 SUN_LIMIT_DEG = -20
 MOON_LIMIT_DEG = -10
 MPSAS_LIMIT = 18
+MPSAS_HIGH_LIMIT = 22 # probably overcast
 debug = 0
 TESTMODE = 0
 
@@ -390,6 +391,7 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
         cloudy_count = 0
         sun_moon_lines_rejected = 0   
         mpsas_lines_rejected = 0    
+        mpsas_high_lines_rejected = 0
         
         # write header
         out.write("UTC_TIME;LOCAL_TIME;SUN_ALT;MOON_ALT;MPSAS;MW_BRIGHTNESS;MW_VISIBLE;ROLL_STDEV\n")
@@ -467,7 +469,9 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
                 if (mpsas < mpsas_limit ): # can be rejected already here
                     mpsas_lines_rejected += 1
                     continue
-                   
+                if (mpsas > MPSAS_HIGH_LIMIT): # probably overcast
+                    mpsas_high_lines_rejected += 1
+                    continue
                     
                 #logging.debug(f"mpsas {mpsas}")
                 t = parse_time(utc_str)
@@ -662,12 +666,13 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
     logging.info(f"Average MPSAS for {location_name}: average_mpsas: {average_mpsas:.2f} max_mpsas: MPSAS: {max_mpsas:.2f} ")
     output = output + f"Average MPSAS for {location_name}: {average_mpsas:.2f} \n"
     output = output + f"Maximum MPSAS {max_mpsas:.2f} \n"
-
+    output = output + f" lines rejected due to high MPSAS: {mpsas_high_lines_rejected}, (MPSAS > {MPSAS_HIGH_LIMIT}) \n"
+    
     logging.info(f"milky way visible rejected {milky_way_visible_count} \n")
     logging.info(f"cloudy rejected {cloudy_count} \n")
     logging.info(f"sun/moon alt rejected {sun_moon_lines_rejected} \n")
     logging.info(f"MPSAS lines rejected {mpsas_lines_rejected} \n")
-    
+    logging.info(f"{mpsas_high_lines_rejected} lines rejected due to high MPSAS > {MPSAS_HIGH_LIMIT} \n")
     return location_name, average_mpsas, serial_number, output
 
 
