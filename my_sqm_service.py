@@ -385,6 +385,10 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
     with open(file_path, "r", encoding="utf-8", errors="ignore") as f, \
         open(output_file_path, "w") as out:
         logging.debug(f"reading file: {file_path}")
+        milky_way_visible_count = 0 # counter for MW visible occurrences
+        cloudy_count = 0
+        sun_moon_lines_rejected = 0   
+        
         # write header
         out.write("UTC_TIME;LOCAL_TIME;SUN_ALT;MOON_ALT;MPSAS;MW_BRIGHTNESS;MW_VISIBLE;ROLL_STDEV\n")
         ###                out.write(f"{utc_str};{local_str};{sun_alt:.3f};{moon_alt:.3f};{mpsas:.3f};{mw_sb:.2f};{milky_way_visible};{roll_stdev:.4f}\n")
@@ -434,6 +438,7 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
         prev_times = deque(maxlen=5)
         logging.debug(f"Processing lines")
         for line in f:
+            
             linecounter += 1
             line = line.strip()
             #logging.debug(f"Line: {linecounter}: {line}")
@@ -536,8 +541,9 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
                         mw_sb = cache_result['mw_brightness']
                         # milky_way_visible = cache_result['milky_way_visible']
                         # use value from input, not cache
-                        milky_way_visible = (mw_sb <= mw_sb_threshold)
-                        
+                        # milky_way_visible = (mw_sb <= mw_sb_threshold)
+                        # if milky_way_visible:
+                        #     milky_way_visible_count +=1
                         # logging.debug(f"Using cached values: sun_alt={sun_alt:.2f}, moon_alt={moon_alt:.2f}, mw_sb={mw_sb:.2f}")
                     else:
                         # Calculate remaining values
@@ -563,8 +569,9 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
                         mw_sb = mw_sb_plane + EXTINCTION_COEFF * (airmass - 1.0)
                         
                         # visible boolean
-                        milky_way_visible = (mw_sb <= mw_sb_threshold)
-                        
+                        # milky_way_visible = (mw_sb <= mw_sb_threshold)
+                        # if milky_way_visible:
+                        #     milky_way_visible_count +=1
                         # Store in cache
                         set_cache(lat, lon, t, sun_alt, moon_alt, mw_sb, milky_way_visible)
                         
@@ -572,6 +579,11 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
                         if (debug > 0):
                             logging.debug(f"zenith b={b_deg:.2f}°, mw_sb_plane={mw_sb_plane:.2f}, mw_sb={mw_sb:.2f}, visible={milky_way_visible}")
                     
+                    milky_way_visible = (mw_sb <= mw_sb_threshold)
+                    if milky_way_visible:
+                        milky_way_visible_count +=1
+
+
                     if (milky_way_visible != last_milky_way_visible):
                         last_milky_way_visible = milky_way_visible
                         logging.debug(f"change: milky_way_visible: {milky_way_visible}")
@@ -583,7 +595,8 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
                     # Daytime (sun_alt >= 0): skip all calculations
                     # logging.debug(f"Daytime (sun_alt={sun_alt:.2f}), skipping sky quality calculations")
                 
-                last_altitude_time = t
+                # last_altitude_time = t
+                last_altitude_time = None # force recalc sun_alt next time
                     
                     
             # only calculate roll_stdev if both sun/moon are below limits
@@ -591,7 +604,10 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
             sun_alt < sun_max_alt and moon_alt < moon_max_alt:
                 roll_stdev = np.std([mm for _, mm in buffer]) if len(buffer) >= 2 else np.nan
                 if not np.isnan(roll_stdev) and roll_stdev < stdev_threshold:
-                    if (mpsas > mpsas_limit):
+                    
+                    #logging.debug(f"Line {linecounter}: roll_stdev {roll_stdev:.
+                    # output = output + f"Line {linecounter}: Accepted MPSAS {mpsas} with roll_stdev {roll_stdev:.4f}\n"
+                    if (mpsas > mpsas_limit and not milky_way_visible): # added milky way not visible
                         #logging.debug(f"mpsas: {mpsas} > {mpsas_limit}")
                         out.write(f"{utc_str};{local_str};{sun_alt:.3f};{moon_alt:.3f};{mpsas:.3f};{mw_sb:.2f};{milky_way_visible};{roll_stdev:.4f}\n")
                     #print(f"Output line: {utc_str};{local_str};{sun_alt:.3f};{moon_alt:.3f};{mpsas:.3f};{roll_stdev:.4f}")
@@ -601,13 +617,21 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
                         # keep maximum mpsas in file
                         if mpsas > max_mpsas:
                             max_mpsas = mpsas
-                        
+                    else:
+                        logging.debug(f"Line {linecounter}: Rejected due to mpsas {mpsas:.2f} <= limit {mpsas_limit} or milky_way_visible {milky_way_visible}")
+                        # output = output + f"Line {linecounter}: Rejected MPSAS {mpsas} due to limit {mpsas_limit} or milky_way_visible {milky_way_visible}\n"
+                else:
+                    cloudy_count += 1
+                    #logging.debug(f"Line {linecounter}: Rejected due to roll_stdev {roll_stdev:.4f}")
+                    # output = output + f"Line {linecounter}: Rejected MPSAS {mpsas} with roll_stdev {roll_stdev:.4f}\n"        
                         
             if (used_lines > line_limit):
                 logging.info(f"break after {linecounter} lines, used_lines {used_lines}")
                 output = output + f"Ending after {used_lines} good lines, because your device is not registered\n"
                 break
-                
+            
+            else: # sun_alt < sun_max_alt and moon_alt < moon_max_alt
+                sun_moon_lines_rejected += 1    
                 
     print(f"Finished processing {linecounter} lines, {used_lines} saved to {output_file_path}")
     logging.info(f"Finished processing {linecounter} lines, {used_lines} saved to {output_file_path}")
@@ -617,9 +641,12 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
     else:
         average_mpsas = 0
         logging.info(f"no lines for average_mpsas {average_mpsas}")
-    output = output + f"Finished processing {linecounter} lines\n{used_lines} saved\n"
+    output = output + f"Finished processing {linecounter} lines\nAccepted lines {used_lines} saved\n"
     output = output + f"Average MPSAS for {location_name}: {average_mpsas:.2f} \n"
     output = output + f"Maximum MPSAS {max_mpsas:.2f} \n"
+    output = output + f"Milky way visible count: {milky_way_visible_count} \n"
+    output = output + f"Cloudy count (stdev > {stdev_threshold}): {cloudy_count} \n"
+    output = output + f"Sun/Moon altitude lines rejected: {sun_moon_lines_rejected} \n" 
 
     logging.info(f"Average MPSAS for {location_name}: average_mpsas: {average_mpsas:.2f} max_mpsas: MPSAS: {max_mpsas:.2f} ")
     output = output + f"Average MPSAS for {location_name}: {average_mpsas:.2f} \n"
