@@ -470,6 +470,10 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
                 logging.exception(f"Error parsing line {linecounter}")
                 continue
             
+            if (mpsas > mpsas_limit ): # can be rejected already here
+                mpsas_lines_rejected += 1
+                continue
+            
             # append to rolling buffer
             #logging.debug(f"appending to buffer t mpsas {t} {mpsas}")
             buffer.append((t, mpsas))
