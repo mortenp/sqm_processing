@@ -63,19 +63,19 @@ DEFAULT_STDEV_THRESHOLD = 0.05
 SUN_LIMIT_DEG = -20
 MOON_LIMIT_DEG = -10
 MPSAS_LIMIT = 18
-MPSAS_HIGH_LIMIT = 22 # probably overcast
+MPSAS_HIGH_LIMIT = 22.5 # calculate average from above this number,probably overcast
 debug = 0
 TESTMODE = 0
 
-DEFAULT_LAT = 56.04
-DEFAULT_LONG = 10.87  
+DEFAULT_LAT = 55.00
+DEFAULT_LONG = 12.5  
 
 # Milky Way calc - parameters (make configurable)
 BASE_MW_SB = 20.5                  # mag/arcsec^2 at zenith (tune to your site)
 BASE_MW_SB_AT_PLANE = 20.0         # mag/arcsec² for zenith lying exactly on galactic plane
 PLANE_TO_POLE_FADE = 2.5           # additional mag from b=0 -> |b|=90 (tune to site)
 EXTINCTION_COEFF = 0.15            # mag per airmass (typical site value)
-MW_SB_THRESHOLD = 21.5             # max mag/arcsec^2 to consider "Milky Way visible"
+MW_SB_THRESHOLD = 21            # max mag/arcsec^2 to consider "Milky Way visible"
 
 LIMIT_SERIALS = 0
 # --------------------------------------------------------
@@ -296,6 +296,7 @@ def parse_header(file, max_lines=50):
         if not line:
             break
         header_lines.append(line)
+        # # Position (lat, lon, elev(m)): 55, 12,282, 0
         lat_match = re.search(
             r'Position \(lat, lon, elev\(m\)\): ([\d\.-]+), ([\d\.-]+), (\d+)', line
         )
@@ -318,7 +319,8 @@ def parse_header(file, max_lines=50):
    
                  
     if lat is None or lon is None:
-        logging.warning("Could not extract location from header, using default")
+        logging.warning("parse_header: Could not extract location from header, using default")
+        logging.warning(f"{DEFAULT_LAT },{DEFAULT_LONG}")
         location = EarthLocation(lat=DEFAULT_LAT*u.deg, lon=DEFAULT_LONG*u.deg)
     else:
         logging.debug(f"Parsed location: {lat}, {lon}")
@@ -343,7 +345,7 @@ def parse_time(tstr):
 
 def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIMIT_DEG, moon_max_alt=MOON_LIMIT_DEG,
                    roll_duration_min=DEFAULT_ROLL_DURATION_MIN,
-                   stdev_threshold=DEFAULT_STDEV_THRESHOLD, mw_sb_threshold=MW_SB_THRESHOLD, testmode=0):
+                   stdev_threshold=DEFAULT_STDEV_THRESHOLD, mw_sb_threshold=MW_SB_THRESHOLD, testmode=0, mpsas_high_limit=MPSAS_HIGH_LIMIT):
     from astropy.time import Time
     from astropy.coordinates import EarthLocation, AltAz, get_sun, get_body
     import astropy.units as u
@@ -360,9 +362,9 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
     #print(f"process_stream file: {file_path}")
     logging.debug(f"process_stream file: {file_path}")
     #output = output + f"processing file: {file_path} \nwith params mpsas_limit {mpsas_limit} sun_max_alt {sun_max_alt} moon_max_alt {moon_max_alt} \nroll_duration_min {roll_duration_min} stdev_threshold {stdev_threshold}\n"
-    output = output + f"Processing file with params: \nmpsas_limit {mpsas_limit} \nsun_max_alt {sun_max_alt} \nmoon_max_alt {moon_max_alt} \nroll_duration_min {roll_duration_min} \nstdev_threshold {stdev_threshold}\n"
-    logging.debug(f"Processing file with params: \nmpsas_limit {mpsas_limit} \nsun_max_alt {sun_max_alt} \nmoon_max_alt {moon_max_alt} \nroll_duration_min {roll_duration_min} \nstdev_threshold {stdev_threshold}\n")
-    
+    output = output + f"Processing file with params: \nmpsas_limit {mpsas_limit} \nsun_max_alt {sun_max_alt} \nmoon_max_alt {moon_max_alt} \nroll_duration_min {roll_duration_min} \nstdev_threshold {stdev_threshold}\nmpsas_high_limit {mpsas_high_limit}\n"
+    logging.debug(f"Processing file with params: \nmpsas_limit {mpsas_limit} \nsun_max_alt {sun_max_alt} \nmoon_max_alt {moon_max_alt} \nroll_duration_min {roll_duration_min} \nstdev_threshold {stdev_threshold}\nmpsas_high_limit {mpsas_high_limit}\n")
+
     buffer = deque()  # stores (Time, MPSAS)
     linecounter = 0
     last_altitude_time = None
@@ -390,10 +392,10 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
         milky_way_visible_count = 0 # counter for MW visible occurrences
         cloudy_count = 0
         sun_moon_lines_rejected = 0   
-        mpsas_lines_rejected = 0    
+        mpsas_low_lines_rejected = 0    
         mpsas_high_lines_rejected = 0
-        mpsas_high_limit_running = MPSAS_HIGH_LIMIT
-        mpsas_total = 0
+        # mpsas_high_limit_running = DEFAULT_MPSAS_HIGH_LIMIT
+        mpsas_high_total = 0
         mpsas_ok_lines = 0
         
         
@@ -404,7 +406,7 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
         # parse header for location
         lat, lon, location_name, serial_number, header_len = parse_header(f)
         if lat is None or lon is None:
-            logging.debug(f"Could not extract location from header, using default 55N/12E")
+            logging.debug(f"Could not extract location from header, using default 55N/12.5E")
             #print("Could not extract location from header, using default 55N/12E")
             location = EarthLocation(lat=55*u.deg, lon=12*u.deg)
             output = output + f"<strong>Missing location, using default: {lat}:{lon}\n"
@@ -475,21 +477,29 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
                 
 
                 if (mpsas < mpsas_limit ): # can be rejected already here
-                    mpsas_lines_rejected += 1
+                    mpsas_low_lines_rejected += 1
                     continue
                 
-                mpsas_total += mpsas
-                mpsas_ok_lines +- 1
-                # logging.debug(f"check mpsas:{mpsas} > {mpsas_limit}")
-                mpsas_running_average = mpsas_total/mpsas_ok_lines 
-                mpsas_high_limit_running = mpsas_running_average + 1
-                logging.debug(f"mpsas_high_limit from {mpsas_running_average}:  {mpsas_high_limit_running}")
-                
-                if (mpsas > mpsas_high_limit_running): # probably overcast
+                if (mpsas > mpsas_high_limit):
                     mpsas_high_lines_rejected += 1
-                    logging.debug(f"reject high mpsas:{mpsas} > {mpsas_high_limit_running}")
                     continue
                     
+                    
+                # mpsas_ok_lines = mpsas_ok_lines + 1
+                # mpsas_high_total = mpsas_high_total + mpsas
+                
+                # # logging.debug(f"check mpsas:{mpsas} > {mpsas_limit}")
+                # if (mpsas_ok_lines > 0 and mpsas > MPSAS_HIGH_LIMIT):
+                #     logging.debug(f"mpsas_ok_lines: {mpsas_ok_lines}")
+                #     mpsas_running_average = mpsas_high_total/mpsas_ok_lines 
+                #     mpsas_high_limit_running = mpsas_running_average + 0.5
+                #     logging.debug(f"mpsas_high_limit from {mpsas_running_average}:  {mpsas_high_limit_running}")
+                    
+                # if (mpsas > mpsas_high_limit_running): # probably overcast
+                #     mpsas_high_lines_rejected += 1
+                #     logging.debug(f"reject high mpsas:{mpsas} > {mpsas_high_limit_running}")
+                #     continue
+                        
                 #logging.debug(f"mpsas {mpsas}")
                 t = parse_time(utc_str)
                 if t is None:
@@ -617,7 +627,7 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
 
                     if (milky_way_visible != last_milky_way_visible):
                         last_milky_way_visible = milky_way_visible
-                        logging.debug(f"change: milky_way_visible: {milky_way_visible}")
+                        logging.debug(f"change: milky_way_visible: {milky_way_visible}, mw_sb: {mw_sb:.2f} <> {mw_sb_threshold}")
 
                     if (debug > 0):
                         logging.debug(f"moon_alt: {moon_alt}")
@@ -649,7 +659,8 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
                         if mpsas > max_mpsas:
                             max_mpsas = mpsas
                     else:
-                        logging.debug(f"Line {linecounter}: Rejected due to mpsas {mpsas:.2f} <= limit {mpsas_limit} or milky_way_visible {milky_way_visible}")
+                        # logging.debug(f"change: milky_way_visible: {milky_way_visible}, mw_sb: {mw_sb:.2f} < {mw_sb_threshold}")
+                        logging.debug(f"Line {linecounter}: Rejected due to mpsas {mpsas:.2f} <= limit {mpsas_limit} or milky_way_visible {milky_way_visible} mw_sb: {mw_sb:.2f}  {mw_sb_threshold}")
                         # output = output + f"Line {linecounter}: Rejected MPSAS {mpsas} due to limit {mpsas_limit} or milky_way_visible {milky_way_visible}\n"
                 else:
                     cloudy_count += 1
@@ -678,18 +689,18 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
     output = output + f"Milky way visible count: {milky_way_visible_count} \n"
     output = output + f"Cloudy count (stdev > {stdev_threshold}): {cloudy_count} \n"
     output = output + f"Sun/Moon altitude lines rejected: {sun_moon_lines_rejected} \n" 
-    output = output + f"MPSAS lines rejected (MPSAS < {mpsas_limit}): {mpsas_lines_rejected} \n"
+    output = output + f"MPSAS low lines rejected (MPSAS < {mpsas_limit}): {mpsas_low_lines_rejected} \n"
 
     logging.info(f"Average MPSAS for {location_name}: average_mpsas: {average_mpsas:.2f} max_mpsas: MPSAS: {max_mpsas:.2f} ")
     output = output + f"Average MPSAS for {location_name}: {average_mpsas:.2f} \n"
     output = output + f"Maximum MPSAS {max_mpsas:.2f} \n"
-    output = output + f"lines rejected due to high MPSAS: {mpsas_high_lines_rejected}, (MPSAS > {mpsas_high_limit_running}) \n"
+    output = output + f"MPSAS high lines rejected: {mpsas_high_lines_rejected}, (MPSAS > {mpsas_high_limit}) \n"
     
     logging.info(f"milky way visible rejected {milky_way_visible_count} \n")
     logging.info(f"cloudy rejected {cloudy_count} \n")
     logging.info(f"sun/moon alt rejected {sun_moon_lines_rejected} \n")
-    logging.info(f"MPSAS lines rejected {mpsas_lines_rejected} \n")
-    logging.info(f"{mpsas_high_lines_rejected} lines rejected due to high MPSAS > {mpsas_high_limit_running} \n")
+    logging.info(f"MPSAS low lines rejected {mpsas_low_lines_rejected} \n")
+    logging.info(f"MPSAS high lines rejected {mpsas_high_lines_rejected}, MPSAS > {mpsas_high_limit} \n")
     return location_name, average_mpsas, serial_number, output
 
 
@@ -701,6 +712,7 @@ async def process_file(
     moon_max_alt: int = Form(-10),  # default matches your HTML
     sun_max_alt: int = Form(-20),
     mpsas_limit: float = Form(MPSAS_LIMIT),
+    mpsas_high_limit: float = Form(MPSAS_HIGH_LIMIT),
     mw_sb_threshold: float = Form(MW_SB_THRESHOLD),
     testmode: int = Form(TESTMODE)
 ):   
@@ -732,7 +744,7 @@ async def process_file(
         # You can open save_path and process line by line or in chunks
         
         
-        location_name, average_mpsas, serial_number, result = process_stream(save_path, processed_path, mpsas_limit, sun_max_alt, moon_max_alt, roll_duration, stdev_threshold, mw_sb_threshold, testmode)
+        location_name, average_mpsas, serial_number, result = process_stream(save_path, processed_path, mpsas_limit, sun_max_alt, moon_max_alt, roll_duration, stdev_threshold, mw_sb_threshold, testmode, mpsas_high_limit)
         res = res + result
         logging.debug(f"location_name {location_name}")
         logging.debug(f"average_mpsas {average_mpsas:.2f}")
