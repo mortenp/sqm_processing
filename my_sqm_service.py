@@ -438,7 +438,7 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
             line_limit = 99
             logging.debug(f"serial_number {serial_number} not in registered, line_limit {line_limit} ")
         else:
-            line_limit = 100000000
+            line_limit = 300000
             logging.debug(f"serial_number {serial_number} is registered, line_limit {line_limit} ")
         # only limit if LIMIT_SERIALS is set
         if (LIMIT_SERIALS < 1):
@@ -478,10 +478,12 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
 
                 if (mpsas < mpsas_limit ): # can be rejected already here
                     mpsas_low_lines_rejected += 1
+                    logging.debug(f"Rejected line {linecounter}: low mpsas:{mpsas} < {mpsas_limit}")
                     continue
                 
                 if (mpsas > mpsas_high_limit):
                     mpsas_high_lines_rejected += 1
+                    logging.debug(f"Rejected line {linecounter}: high mpsas:{mpsas} > {mpsas_high_limit}")
                     continue
                     
                     
@@ -648,7 +650,7 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
                     
                     #logging.debug(f"Line {linecounter}: roll_stdev {roll_stdev:.
                     # output = output + f"Line {linecounter}: Accepted MPSAS {mpsas} with roll_stdev {roll_stdev:.4f}\n"
-                    if (mpsas > mpsas_limit and not milky_way_visible): # added milky way not visible
+                    if (not milky_way_visible): # added milky way not visible # removed mpsas > mpsas_limit because already checked 
                         #logging.debug(f"mpsas: {mpsas} > {mpsas_limit}")
                         out.write(f"{utc_str};{local_str};{sun_alt:.3f};{moon_alt:.3f};{mpsas:.3f};{mw_sb:.2f};{milky_way_visible};{roll_stdev:.4f}\n")
                     #print(f"Output line: {utc_str};{local_str};{sun_alt:.3f};{moon_alt:.3f};{mpsas:.3f};{roll_stdev:.4f}")
@@ -660,7 +662,7 @@ def process_stream(file_path, output_file_path, mpsas_limit, sun_max_alt=SUN_LIM
                             max_mpsas = mpsas
                     else:
                         # logging.debug(f"change: milky_way_visible: {milky_way_visible}, mw_sb: {mw_sb:.2f} < {mw_sb_threshold}")
-                        logging.debug(f"Line {linecounter}: Rejected due to mpsas {mpsas:.2f} <= limit {mpsas_limit} or milky_way_visible {milky_way_visible} mw_sb: {mw_sb:.2f}  {mw_sb_threshold}")
+                        logging.debug(f"Line {linecounter}: Rejected due to milky_way_visible {milky_way_visible} mw_sb: {mw_sb:.2f}  {mw_sb_threshold}")
                         # output = output + f"Line {linecounter}: Rejected MPSAS {mpsas} due to limit {mpsas_limit} or milky_way_visible {milky_way_visible}\n"
                 else:
                     cloudy_count += 1
